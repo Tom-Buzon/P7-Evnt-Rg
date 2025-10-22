@@ -17,12 +17,14 @@ from src.scripts.query_rag import answer
 from src.scripts.build_index import main as rebuild_index
 from src.config import settings
 
+
 # ===========================
 #    UI CONFIG
 # ===========================
 st.set_page_config(page_title="Puls-Events RAG", page_icon="🎟️", layout="wide")
 st.title("🎟️ Puls-Events — Chat RAG")
-st.caption("Mistral (chat) • FAISS (recherche MMR) • Embeddings selon build_index")
+st.caption("Chat (Mistral API ou Ollama local) • FAISS (recherche MMR) • Embeddings selon build_index")
+
 
 # ===========================
 #    SIDEBAR
@@ -34,14 +36,59 @@ with st.sidebar:
     max_tokens = st.slider("Taille de réponse (tokens)", 50, 1000, 300, 50)
 
     st.write("---")
+    st.subheader("Chat backend")
+    # keep the label text so your existing code can map it
+    chat_backend = st.radio(
+        "Backend de génération",
+        options=["Mistral API", "Ollama local"],
+        index=0,
+        help="Choisis entre l'API Mistral ou un modèle local via Ollama.",
+    )
+
+    # model pickers, keeping YOUR variable names
+    mistral_model = st.text_input(
+        "Modèle Mistral",
+        value=getattr(settings, "mistral_chat_model", "mistral-medium-2508"),
+        help="Ex: mistral-small-latest, mistral-medium-2508, etc.",
+        disabled=(chat_backend != "Mistral API"),
+    )
+
+    # sensible defaults for Ollama
+    default_ollama_base = "http://127.0.0.1:11434"
+    ollama_base_url = st.text_input(
+        "Ollama base URL",
+        value=default_ollama_base,
+        help="Astuce Windows: utilisez 127.0.0.1 plutôt que localhost.",
+        disabled=(chat_backend != "Ollama local"),
+    )
+
+    # try to list local models; fallback to a small list
+    ollama_models = ["mistral", "llama3.2", "llama2"]
+    if chat_backend == "Ollama local":
+        try:
+            import requests
+            resp = requests.get(f"{ollama_base_url.rstrip('/')}/api/tags", timeout=1.5)
+            if resp.ok:
+                tags = [t["name"].split(":")[0] for t in (resp.json().get("models") or [])]
+                if tags:
+                    ollama_models = sorted(set(tags))
+        except Exception:
+            pass
+
+    ollama_chat_model = st.selectbox(
+        "Modèle Ollama",
+        options=ollama_models,
+        index=min(ollama_models.index("mistral") if "mistral" in ollama_models else 0, len(ollama_models)-1),
+        disabled=(chat_backend != "Ollama local"),
+    )
+
+    st.write("---")
     st.subheader("Retrieval (MMR)")
     use_mmr = st.checkbox("Activer MMR (diversité)", value=True)
     mmr_fetch_k = st.slider("fetch_k (pool initial)", 20, 400, 100, 10)
     mmr_lambda = st.slider("lambda_mult (0=diversité, 1=similarité)", 0.0, 1.0, 0.2, 0.05)
 
     st.write("---")
-
-
     if st.button("🔄 Rebuild index (local)", type="primary"):
         with st.spinner("Reconstruction de l'index FAISS..."):
             try:
@@ -51,17 +98,18 @@ with st.sidebar:
                 st.error(f"Erreur rebuild: {e}")
 
     st.write("---")
-
-    
     st.subheader("Configuration RAG")
     st.code(
         f"INDEX_DIR = {settings.index_dir}\n"
-        f"MISTRAL_CHAT_MODEL = {getattr(settings, 'mistral_chat_model', 'mistral-medium-2508')}\n"
+        f"BACKEND = {chat_backend}\n"
+        f"MISTRAL_CHAT_MODEL = {mistral_model}\n"
+        f"OLLAMA_CHAT_MODEL = {ollama_chat_model}\n"
         f"temperature = {temperature}\n"
         f"max_tokens = {max_tokens}\n"
         f"use_mmr = {use_mmr} | fetch_k = {mmr_fetch_k} | lambda = {mmr_lambda}\n",
         language="bash",
     )
+
 
 # ===========================
 #    SESSION STATE
@@ -72,6 +120,7 @@ if "last_contexts" not in st.session_state:
     st.session_state.last_contexts = []
 if "last_ranking" not in st.session_state:
     st.session_state.last_ranking = []
+
 
 # ===========================
 #    HELPERS
@@ -94,16 +143,25 @@ def ask_and_render(question: str, k: int) -> None:
                     use_mmr=use_mmr,
                     mmr_fetch_k=mmr_fetch_k,
                     mmr_lambda_mult=mmr_lambda,
+                    # --- nouveautés : keep YOUR exact arg names
+                    chat_backend=("mistral" if chat_backend == "Mistral API" else "ollama"),
+                    mistral_model=mistral_model,
+                    ollama_chat_model=ollama_chat_model,
+                    ollama_base_url=ollama_base_url,
                 )
                 answer_text = res.get("answer", "Je ne sais pas.")
                 contexts = res.get("contexts", [])
                 ranking = res.get("ranking", [])
             except Exception as e:
-                answer_text, contexts, ranking = f"Erreur: {e}", [], []
+                import traceback
+                st.error(f"**{type(e).__name__}**: {e}")
+                st.code("".join(traceback.format_exc()), language="text")
+                answer_text, contexts, ranking = "Je ne sais pas.", [], []
         st.markdown(answer_text)
         st.session_state.messages.append({"role": "assistant", "content": answer_text})
         st.session_state.last_contexts = contexts
         st.session_state.last_ranking = ranking
+
 
 # ===========================
 #    CHAT HISTORY
@@ -112,12 +170,14 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
+
 # ===========================
 #    CHAT INPUT
 # ===========================
 user_q = st.chat_input("Pose ta question (ex: Quels concerts à Toulouse en juin 2024 ?)")
 if user_q and user_q.strip():
     ask_and_render(user_q.strip(), k=top_k)
+
 
 # ===========================
 #    PRESET BUTTONS
@@ -134,6 +194,7 @@ for c, ex in zip(cols, examples):
     if c.button(ex, key=f"ex_{ex}", help="Clique pour pré-remplir"):
         ask_and_render(ex, k=top_k)
         st.rerun()
+
 
 # ===========================
 #    CONTEXTS + RANKING

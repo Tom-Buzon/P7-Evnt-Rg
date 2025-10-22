@@ -169,6 +169,11 @@ def answer(
     mmr_fetch_k: int | None = None,          # déjà ajouté précédemment
     temperature: float = 0.2,
     max_tokens: int = 300,
+    # --- nouveaux paramètres pour le choix de Model ---
+    chat_backend: str = "mistral",                # "mistral" ou "ollama"
+    mistral_model: str | None = None,             # e.g. "mistral-medium-2508"
+    ollama_chat_model: str | None = None,         # e.g. "mistral", "llama3.2"
+    ollama_base_url: str | None = "http://localhost:11434",
 ) -> dict:
     ...
     # --- embeddings + index (inchangé)
@@ -275,27 +280,66 @@ def answer(
             "uid": m.get("uid"),
         })
 
-    # --- Appel Mistral (garde l'ordre du contexte, le prompt l’impose)
-    client = Mistral(api_key=settings.mistral_api_key)
+        # --- Appel LLM (Mistral API ou Ollama local) ---
     context = "\n\n---\n\n".join(context_blocks)
-    resp = client.chat.complete(
-        model=getattr(settings, "mistral_chat_model", "mistral-medium-2508"),
-        temperature=temperature,
-        max_tokens=max_tokens,
-        messages=[
-            {"role": "system", "content": SYS_PROMPT},
-            {"role": "user", "content": f"Contexte (trié par pertinence):\n{context}\n\nQuestion: {query}"},
-        ],
-    )
+    user_prompt = f"Contexte (trié par pertinence):\n{context}\n\nQuestion: {query}"
 
-    print(
-        f"[DEBUG] retrieved(MMR)={len(docs_with_scores)} | "
-        f"after_filters={len(filtered)} | used={len(chosen)} | "
-        f"city={want_city} | date={want_date} | range={want_range}"
-    )
+    if chat_backend.lower() == "ollama":
+        # Prefer 127.0.0.1 on Windows
+        base = (ollama_base_url or "http://127.0.0.1:11434").rstrip("/")
+
+        # quick ping so we surface network errors clearly
+        try:
+            import requests
+            requests.get(f"{base}/api/tags", timeout=2).raise_for_status()
+        except Exception as ping_err:
+            raise RuntimeError(
+                f"Ollama not reachable at {base}. "
+                f"Tip: try http://127.0.0.1:11434 instead of localhost. ({ping_err})"
+            )
+    
+        # import ChatOllama (new package first, old fallback)
+        try:
+            from langchain_ollama import ChatOllama  # modern
+        except Exception:
+            from langchain_community.chat_models import ChatOllama  # legacy
+    
+        model_name = (ollama_chat_model or "mistral").strip()
+    
+        # num_predict ~ max tokens
+        llm = ChatOllama(
+            base_url=base,
+            model=model_name,
+            temperature=temperature,
+            num_predict=max_tokens if max_tokens and max_tokens > 0 else None,
+        )
+    
+        # For ChatOllama we just send one big prompt
+        full_prompt = f"{SYS_PROMPT}\n\n{user_prompt}\n\nRéponds en français."
+        resp_text = llm.invoke(full_prompt).content
+    
+    else:
+        # MISTRAL API
+        client = Mistral(api_key=settings.mistral_api_key)
+        resp = client.chat.complete(
+            model=(mistral_model or getattr(settings, "mistral_chat_model", "mistral-medium-2508")),
+            temperature=temperature,
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": SYS_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        resp_text = resp.choices[0].message.content
+    
+        print(
+            f"[DEBUG] retrieved(MMR)={len(docs_with_scores)} | "
+            f"after_filters={len(filtered)} | used={len(chosen)} | "
+            f"city={want_city} | date={want_date} | range={want_range}"
+        )
 
     return {
-        "answer": resp.choices[0].message.content,
+        "answer": resp_text,
         "contexts": context_blocks,
         "ranking": ranking,
         "k": k,
