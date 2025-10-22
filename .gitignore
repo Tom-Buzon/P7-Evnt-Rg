@@ -1,0 +1,20 @@
+# secrets / env
+.env
+.env.*
+
+# venv local (Poetry)
+.venv/
+
+# caches python
+__pycache__/
+*.py[cod]
+
+# artefacts locaux (index FAISS)
+artifacts/
+
+# datasets locaux (parquet & co)
+data/
+
+# bricoles OS
+.DS_Store
+Thumbs.db
