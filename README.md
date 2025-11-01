@@ -115,7 +115,7 @@ poetry run build-index
 
 ### 4) Poser une question en CLI
 ```bash
-poetry run query-rag "Quels concerts à Paris ce week-end ?"
+poetry run query-rag -m "Quels concerts à Paris ce week-end ?"
 ```
 
 ### 5) API FastAPI
@@ -140,7 +140,7 @@ Docs Swagger : http://127.0.0.1:8000/docs
 poetry run pytest -q
 ```
 
-### 7) Évaluation (Ragas — prêt à brancher)
+### 7) Évaluation (Ragas)
 - Ajoutez vos Q/A dans `tests/dataset.jsonl`
 - Lancez :
 ```bash
