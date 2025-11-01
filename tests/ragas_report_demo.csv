@@ -1,0 +1,9 @@
+question,contexts,ground_truth,context_precision,context_recall
+Quels concerts à Toulouse en juin 2024 ?,"['Titre: Concert à Toulouse le 30 juin 2024 au Rex (rock) | Ville: Toulouse | Début: 2024-06-30T14:30:00Z | URL: https://exemple.org/rex'
+ 'Titre: Festival Musiques du Monde | Ville: Toulouse | Début: 2024-06-15T20:00:00Z | URL: https://exemple.org/fmm'
+ 'Titre: Fête de la Musique à Paris | Ville: Paris | Début: 2024-06-21T10:00:00Z | URL: https://exemple.org/fdm-paris']",Concert au Rex (30 juin) et Festival Musiques du Monde (15 juin) à Toulouse.,0.99999999995,0.5
+Expositions à Montpellier en septembre 2024 ?,"['Titre: Expo A | Ville: Montpellier | Début: 2024-09-05T09:00:00Z | URL: https://exemple.org/expo-a'
+ 'Titre: Expo B | Ville: Montpellier | Début: 2024-09-01T00:00:00Z | URL: https://exemple.org/expo-b']",Expo A (5–20 sept.) et Expo B (tout septembre) à Montpellier.,0.99999999995,1.0
+Que faire à Paris cet été ?,"['Titre: Paris Plages 2024 | Ville: Paris | Début: 2024-07-01T00:00:00Z | URL: https://exemple.org/paris-plages'
+ 'Titre: Fête de la Musique à Paris | Ville: Paris | Début: 2024-06-21T10:00:00Z | URL: https://exemple.org/fdm-paris'
+ 'Titre: Cinéma en plein air | Ville: Paris | Début: 2024-07-10T21:30:00Z | URL: https://exemple.org/cinema-plein-air']","Paris Plages, Fête de la Musique, Cinéma en plein air (été).",0.9999999999666667,1.0

@@ -1,0 +1,83 @@
+services:
+  app:
+    build: .
+    image: puls-events-rag-poc:latest        # nom d'image local (évite le "pull access denied")
+    container_name: puls-events-app
+    ports:
+      - "8000:8000"
+    environment:
+      # ==== Ollama (depuis l'hôte Windows) ====
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      # IMPORTANT: même modèle que lors du build de l'index
+      # (ex: "mxbai-embed-large" ou "nomic-embed-text")
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-mxbai-embed-large}"
+
+      # ==== Mistral (si tu en as besoin côté app) ====
+      MISTRAL_API_KEY: "${MISTRAL_API_KEY:-}"
+      MISTRAL_CHAT_MODEL: "${MISTRAL_CHAT_MODEL:-mistral-small-latest}"
+      MISTRAL_EMBED_MODEL: "${MISTRAL_EMBED_MODEL:-mistral-embed}"
+
+      # ==== Dossiers (doivent matcher src/config.py) ====
+      DATA_DIR: "/app/data"
+      CLEAN_DIR: "/app/data/clean"
+      INDEX_DIR: "/app/artifacts/index"
+
+      # ==== Filtres data ====
+      REGION_FILTER: "${REGION_FILTER:-}"
+      CITY_FILTER: "${CITY_FILTER:-}"
+      DATE_MIN: "${DATE_MIN:-2024-01-01}"
+      DATE_MAX: "${DATE_MAX:-2025-12-31}"
+
+      # ==== (facultatif) réglages perf embeddings / index ====
+      CHUNK_SIZE: "${CHUNK_SIZE:-2200}"
+      CHUNK_OVERLAP: "${CHUNK_OVERLAP:-40}"
+      EMBED_BATCH: "${EMBED_BATCH:-32}"
+      FAISS_FLUSH: "${FAISS_FLUSH:-1024}"
+      MAX_DOCS: "${MAX_DOCS:-0}"
+
+    volumes:
+      - ./data:/app/data
+      - ./artifacts:/app/artifacts
+      # Si tu veux empêcher tout rebuild de l’index côté conteneur, passe en lecture seule :
+      # - ./data:/app/data:ro
+      # - ./artifacts:/app/artifacts:ro
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  streamlit:
+    # réutilise l'image construite ci-dessus
+    image: puls-events-rag-poc:latest
+    container_name: puls-events-streamlit
+    depends_on:
+      - app
+    environment:
+      # même accès Ollama + même modèle d'embedding que "app"
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-mxbai-embed-large}"
+
+      DATA_DIR: "/app/data"
+      CLEAN_DIR: "/app/data/clean"
+      INDEX_DIR: "/app/artifacts/index"
+
+      # (facultatif) mêmes réglages perf que ci-dessus pour cohérence
+      CHUNK_SIZE: "${CHUNK_SIZE:-2200}"
+      CHUNK_OVERLAP: "${CHUNK_OVERLAP:-40}"
+      EMBED_BATCH: "${EMBED_BATCH:-32}"
+      FAISS_FLUSH: "${FAISS_FLUSH:-1024}"
+      MAX_DOCS: "${MAX_DOCS:-0}"
+
+    volumes:
+      - ./data:/app/data
+      - ./artifacts:/app/artifacts
+      #  interdire le rebuild depuis l’UI :
+      # - ./data:/app/data:ro
+      # - ./artifacts:/app/artifacts:ro
+
+    ports:
+      - "8501:8501"
+    command: ["python", "-m", "streamlit", "run", "src/streamlit.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

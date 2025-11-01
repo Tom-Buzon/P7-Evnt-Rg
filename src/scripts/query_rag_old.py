@@ -1,7 +1,6 @@
 # src/scripts/query_rag.py
 from __future__ import annotations
 
-import os
 import json, re, unicodedata
 from typing import List, Optional, Tuple, Dict, Any
 import pandas as pd
@@ -14,29 +13,23 @@ try:
 except ModuleNotFoundError:
     from langchain.vectorstores import FAISS  # type: ignore
 
-
-# ==========================
-# Embeddings (Ollama local)
-# ==========================
-def _get_ollama_embeddings(base_url: str | None = None):
-    """
-    Priorité URL :
-      1) base_url (param explicite : Streamlit)
-      2) OLLAMA_BASE_URL (ENV)
-      3) fallback 127.0.0.1:11434 (meilleur que localhost sous Windows)
-    Le modèle d'embedding peut être fixé via OLLAMA_MODEL (ENV) sinon mxbai-embed-large.
-    """
-    url = (base_url or os.getenv("OLLAMA_BASE_URL") or "http://127.0.0.1:11434").rstrip("/")
-    model = os.getenv("OLLAMA_MODEL", "mxbai-embed-large")
+# --- Embeddings: même backend que l’index (Ollama local par défaut)
+def _get_ollama_embeddings():
     try:
         from langchain_ollama import OllamaEmbeddings
-    except Exception:
+        return OllamaEmbeddings(
+            model="mxbai-embed-large",
+            base_url="http://localhost:11434",
+        )
+    except Exception:  # dernier recours
         from langchain_community.embeddings import OllamaEmbeddings
-    return OllamaEmbeddings(model=model, base_url=url)
-
+        return OllamaEmbeddings(
+            model="mxbai-embed-large",
+            base_url="http://localhost:11434",
+        )
 
 # -------------------------
-# Utils parsing
+# Utils parsing 
 # -------------------------
 def _norm(s: Optional[str]) -> str:
     if not s:
@@ -45,43 +38,33 @@ def _norm(s: Optional[str]) -> str:
     s = "".join(ch for ch in s if not unicodedata.combining(ch))
     return s.lower().strip()
 
-
 _FR_MONTHS = {
-    "janvier": 1, "fevrier": 2, "février": 2, "mars": 3, "avril": 4, "mai": 5, "juin": 6,
-    "juillet": 7, "aout": 8, "août": 8, "septembre": 9, "octobre": 10, "novembre": 11,
-    "decembre": 12, "décembre": 12
+    "janvier":1,"fevrier":2,"février":2,"mars":3,"avril":4,"mai":5,"juin":6,
+    "juillet":7,"aout":8,"août":8,"septembre":9,"octobre":10,"novembre":11,"decembre":12,"décembre":12
 }
-
 
 def _parse_full_date_fr(qnorm: str) -> Optional[pd.Timestamp]:
     # 12/09/2024 ou 12-09-2024
     m = re.search(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b", qnorm)
     if m:
         d, mh, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        try:
-            return pd.Timestamp(year=y, month=mh, day=d, tz="UTC")
-        except:
-            return None
+        try: return pd.Timestamp(year=y, month=mh, day=d, tz="UTC")
+        except: return None
     # 12 septembre 2024
     m = re.search(r"\b(\d{1,2})\s+([a-zéèêîôûàù]+)\s+(\d{4})\b", qnorm)
     if m:
         d = int(m.group(1)); name = m.group(2); y = int(m.group(3))
         mh = _FR_MONTHS.get(name)
         if mh:
-            try:
-                return pd.Timestamp(year=y, month=mh, day=d, tz="UTC")
-            except:
-                return None
+            try: return pd.Timestamp(year=y, month=mh, day=d, tz="UTC")
+            except: return None
     # yyyy-mm-dd
     m = re.search(r"\b(20\d{2})-(\d{2})-(\d{2})\b", qnorm)
     if m:
         y, mh, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        try:
-            return pd.Timestamp(year=y, month=mh, day=d, tz="UTC")
-        except:
-            return None
+        try: return pd.Timestamp(year=y, month=mh, day=d, tz="UTC")
+        except: return None
     return None
-
 
 def _parse_month_year_fr(qnorm: str) -> Optional[Tuple[pd.Timestamp, pd.Timestamp]]:
     # "septembre 2024"
@@ -92,9 +75,9 @@ def _parse_month_year_fr(qnorm: str) -> Optional[Tuple[pd.Timestamp, pd.Timestam
         if mh:
             start = pd.Timestamp(year=y, month=mh, day=1, tz="UTC")
             if mh == 12:
-                end = pd.Timestamp(year=y + 1, month=1, day=1, tz="UTC") - pd.Timedelta(days=1)
+                end = pd.Timestamp(year=y+1, month=1, day=1, tz="UTC") - pd.Timedelta(days=1)
             else:
-                end = pd.Timestamp(year=y, month=mh + 1, day=1, tz="UTC") - pd.Timedelta(days=1)
+                end = pd.Timestamp(year=y, month=mh+1, day=1, tz="UTC") - pd.Timedelta(days=1)
             end = end + pd.Timedelta(hours=23, minutes=59, seconds=59)
             return start, end
     # "09/2024"
@@ -104,13 +87,12 @@ def _parse_month_year_fr(qnorm: str) -> Optional[Tuple[pd.Timestamp, pd.Timestam
         if 1 <= mh <= 12:
             start = pd.Timestamp(year=y, month=mh, day=1, tz="UTC")
             if mh == 12:
-                end = pd.Timestamp(year=y + 1, month=1, day=1, tz="UTC") - pd.Timedelta(days=1)
+                end = pd.Timestamp(year=y+1, month=1, day=1, tz="UTC") - pd.Timedelta(days=1)
             else:
-                end = pd.Timestamp(year=y, month=mh + 1, day=1, tz="UTC") - pd.Timedelta(days=1)
+                end = pd.Timestamp(year=y, month=mh+1, day=1, tz="UTC") - pd.Timedelta(days=1)
             end = end + pd.Timedelta(hours=23, minutes=59, seconds=59)
             return start, end
     return None
-
 
 def _parse_season_range(qnorm: str) -> Optional[Tuple[pd.Timestamp, pd.Timestamp]]:
     # saison + année uniquement, ex: "été 2024"
@@ -122,44 +104,37 @@ def _parse_season_range(qnorm: str) -> Optional[Tuple[pd.Timestamp, pd.Timestamp
     # fourchettes approximatives
     if season in ("ete", "été"):
         start = pd.Timestamp(year=y, month=6, day=1, tz="UTC")
-        end = pd.Timestamp(year=y, month=8, day=31, hour=23, minute=59, second=59, tz="UTC")
+        end   = pd.Timestamp(year=y, month=8, day=31, hour=23, minute=59, second=59, tz="UTC")
     elif season == "printemps":
         start = pd.Timestamp(year=y, month=3, day=1, tz="UTC")
-        end = pd.Timestamp(year=y, month=5, day=31, hour=23, minute=59, second=59, tz="UTC")
+        end   = pd.Timestamp(year=y, month=5, day=31, hour=23, minute=59, second=59, tz="UTC")
     elif season == "automne":
         start = pd.Timestamp(year=y, month=9, day=1, tz="UTC")
-        end = pd.Timestamp(year=y, month=11, day=30, hour=23, minute=59, second=59, tz="UTC")
+        end   = pd.Timestamp(year=y, month=11, day=30, hour=23, minute=59, second=59, tz="UTC")
     else:  # hiver
         start = pd.Timestamp(year=y, month=12, day=1, tz="UTC")
-        end = pd.Timestamp(year=y + 1, month=2, day=28, hour=23, minute=59, second=59, tz="UTC")
+        end   = pd.Timestamp(year=y+1, month=2, day=28, hour=23, minute=59, second=59, tz="UTC")
     return start, end
-
 
 def _extract_city_token(query: str) -> Optional[str]:
     m = re.search(r"\b(?:a|à|sur|dans|pres de|près de)\s+([A-Za-zÀ-ÖØ-öø-ÿ\-']+)", query, flags=re.IGNORECASE)
-    if m:
-        return _norm(m.group(1))
+    if m: return _norm(m.group(1))
     caps = re.findall(r"\b([A-ZÀ-Ö][A-Za-zÀ-ÖØ-öø-ÿ\-']+)\b", query)
     return _norm(caps[0]) if caps else None
-
 
 def _date_hits_range(start: Optional[pd.Timestamp], end: Optional[pd.Timestamp],
                      want_date: Optional[pd.Timestamp],
                      want_range: Optional[Tuple[pd.Timestamp, pd.Timestamp]]) -> bool:
     if want_date is not None:
-        if pd.isna(start):
-            return False
-        if pd.notna(end):
-            return start <= want_date <= end
+        if pd.isna(start): return False
+        if pd.notna(end):  return start <= want_date <= end
         return abs((start - want_date).total_seconds()) <= 86400
     if want_range is not None:
-        if pd.isna(start):
-            return False
+        if pd.isna(start): return False
         if pd.notna(end):
             return not (end < want_range[0] or start > want_range[1])
         return want_range[0] <= start <= want_range[1]
     return True
-
 
 def _sim_from_distance(dist: float) -> float:
     # faiss renvoie souvent une "distance" -> on la convertit en score lisible [0..1[
@@ -167,7 +142,6 @@ def _sim_from_distance(dist: float) -> float:
         return 1.0 / (1.0 + float(dist))
     except Exception:
         return 0.0
-
 
 # -------------------------
 # Prompt chat
@@ -182,7 +156,6 @@ SYS_PROMPT = (
     "Si rien n’est pertinent dans le contexte, réponds simplement : « Je ne sais pas. »"
 )
 
-
 # -------------------------
 # Main pipeline
 # -------------------------
@@ -192,21 +165,23 @@ def answer(
     k_base: int = 200,
     use_mmr: bool = True,
     mmr_lambda: float = 0.35,                # valeur par défaut
-    mmr_lambda_mult: float | None = None,    # alias accepté depuis l'UI
-    mmr_fetch_k: int | None = None,          # fetch pool pour MMR
+    mmr_lambda_mult: float | None = None,    # <-- alias accepté depuis l'UI
+    mmr_fetch_k: int | None = None,          # déjà ajouté précédemment
     temperature: float = 0.2,
     max_tokens: int = 300,
-    # --- sélection du backend de génération ---
+    # --- nouveaux paramètres pour le choix de Model ---
     chat_backend: str = "mistral",                # "mistral" ou "ollama"
-    mistral_model: str | None = None,             # ex: "mistral-medium-2508"
-    ollama_chat_model: str | None = None,         # ex: "mistral", "llama3.2"
-    ollama_base_url: str | None = None,           # si None, ENV -> fallback 127.0.0.1:11434
+    mistral_model: str | None = None,             # e.g. "mistral-medium-2508"
+    ollama_chat_model: str | None = None,         # e.g. "mistral", "llama3.2"
+    ollama_base_url: str | None = "http://localhost:11434",
 ) -> dict:
-    # --- embeddings + index 
-    embeddings = _get_ollama_embeddings(ollama_base_url)
+    ...
+    # --- embeddings + index (inchangé)
+    from langchain_ollama import OllamaEmbeddings
+    embeddings = OllamaEmbeddings(model="mxbai-embed-large", base_url="http://localhost:11434")
     vs = FAISS.load_local(str(settings.index_dir), embeddings, allow_dangerous_deserialization=True)
 
-    # --- encodage requête
+    # --- encodage requête (inchangé)
     qvec = embeddings.embed_query(query)
 
     # --- retrieval (MMR ou classique) AVEC scores
@@ -222,7 +197,7 @@ def answer(
             embedding=qvec,
             k=k_base,
             fetch_k=fetch_k_val,
-            lambda_mult=lambda_mult,
+            lambda_mult=lambda_mult,   
         )
 
         # Recalcule un score cosinus propre
@@ -252,7 +227,7 @@ def answer(
         m = d.metadata or {}
         city = _norm(m.get("city"))
         start = pd.to_datetime(m.get("start"), errors="coerce", utc=True)
-        end = pd.to_datetime(m.get("end"), errors="coerce", utc=True)
+        end   = pd.to_datetime(m.get("end"), errors="coerce", utc=True)
 
         ok_city = True if not want_city else (want_city == city or want_city in city)
         ok_date = _date_hits_range(start, end, want_date, want_range)
@@ -260,7 +235,7 @@ def answer(
         ok_topic = True
         if want_concert:
             title = _norm(m.get("title"))
-            kws = [_norm(x) for x in (m.get("keywords") or [])]
+            kws = [ _norm(x) for x in (m.get("keywords") or []) ]
             ok_topic = ("concert" in title) or ("concert" in " ".join(kws)) or ("musique" in title)
 
         if ok_city and ok_date and ok_topic:
@@ -272,7 +247,7 @@ def answer(
             m = d.metadata or {}
             city = _norm(m.get("city"))
             start = pd.to_datetime(m.get("start"), errors="coerce", utc=True)
-            end = pd.to_datetime(m.get("end"), errors="coerce", utc=True)
+            end   = pd.to_datetime(m.get("end"), errors="coerce", utc=True)
             ok_city = True if not want_city else (want_city == city or want_city in city)
             ok_date = _date_hits_range(start, end, want_date, want_range)
             if ok_city and ok_date:
@@ -305,14 +280,15 @@ def answer(
             "uid": m.get("uid"),
         })
 
-    # --- Appel LLM (Mistral API ou Ollama local) ---
+        # --- Appel LLM (Mistral API ou Ollama local) ---
     context = "\n\n---\n\n".join(context_blocks)
     user_prompt = f"Contexte (trié par pertinence):\n{context}\n\nQuestion: {query}"
 
     if chat_backend.lower() == "ollama":
-        base = (ollama_base_url or os.getenv("OLLAMA_BASE_URL") or "http://127.0.0.1:11434").rstrip("/")
+        # Prefer 127.0.0.1 on Windows
+        base = (ollama_base_url or "http://127.0.0.1:11434").rstrip("/")
 
-        # ping pour surfacer les erreurs réseau clairement
+        # quick ping so we surface network errors clearly
         try:
             import requests
             requests.get(f"{base}/api/tags", timeout=2).raise_for_status()
@@ -321,26 +297,27 @@ def answer(
                 f"Ollama not reachable at {base}. "
                 f"Tip: try http://127.0.0.1:11434 instead of localhost. ({ping_err})"
             )
-
-        # import ChatOllama (new package first, legacy fallback)
+    
+        # import ChatOllama (new package first, old fallback)
         try:
             from langchain_ollama import ChatOllama  # modern
         except Exception:
             from langchain_community.chat_models import ChatOllama  # legacy
-
+    
         model_name = (ollama_chat_model or "mistral").strip()
-
-        # num_predict ~ max_tokens
+    
+        # num_predict ~ max tokens
         llm = ChatOllama(
             base_url=base,
             model=model_name,
             temperature=temperature,
             num_predict=max_tokens if max_tokens and max_tokens > 0 else None,
         )
-
+    
+        # For ChatOllama we just send one big prompt
         full_prompt = f"{SYS_PROMPT}\n\n{user_prompt}\n\nRéponds en français."
         resp_text = llm.invoke(full_prompt).content
-
+    
     else:
         # MISTRAL API
         client = Mistral(api_key=settings.mistral_api_key)
@@ -354,12 +331,12 @@ def answer(
             ],
         )
         resp_text = resp.choices[0].message.content
-
-    print(
-        f"[DEBUG] retrieved(MMR)={len(docs_with_scores)} | "
-        f"after_filters={len(filtered)} | used={len(chosen)} | "
-        f"city={want_city} | date={want_date} | range={want_range}"
-    )
+    
+        print(
+            f"[DEBUG] retrieved(MMR)={len(docs_with_scores)} | "
+            f"after_filters={len(filtered)} | used={len(chosen)} | "
+            f"city={want_city} | date={want_date} | range={want_range}"
+        )
 
     return {
         "answer": resp_text,
@@ -374,7 +351,6 @@ def main():
     q = " ".join(sys.argv[1:]) or "Quels concerts à Toulouse en juin 2024 ?"
     res = answer(q, k=5, use_mmr=True)
     print(json.dumps(res, ensure_ascii=False, indent=2))
-
 
 if __name__ == "__main__":
     main()

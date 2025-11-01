@@ -19,6 +19,9 @@ Aucune dépendance à Git ou Docker : on utilise **Poetry** pour gérer un **ven
 
 ---
 
+## Commande rapide et Vigilance
+pour la version Docker, on utilise le ollama de la machine ( il n'est pas dans l'image), il faut donc changer le port :http://host.docker.internal:11434
+
 ## 🧪 Installation (Poetry + venv)
 ```bash
 # 1) Installer Poetry s'il n'est pas déjà présent
@@ -63,16 +66,17 @@ puls-events-rag-poc/
 │  │  ├─ clean_data.py         # 2. Nettoyage + Parquet
 │  │  ├─ build_index.py        # 3. Embedding + FAISS
 │  │  ├─ query_rag.py          # 4. Question en CLI (RAG)
-│  │  └─ evaluate_rag.py       # 5. Ébauche d'évaluation (Ragas-ready)
+│  │  └─ ragas_ollama_demo.py  # 5. démonstration de raggas en utilisant ollama (Ragas-ready)
 │  ├─ openagenda_client.py     # Client Opendatasoft (+ auto-détection du champ date)
 │  ├─ config.py                # Chargement .env
 │  └─ utils.py                 # Normalisation des colonnes → texte
+│  └─ streamlit.py             # BONUS : Frontend Opérationel
 ├─ tests/
 │  ├─ test_api_smoke.py        # Démarre l'API et check /docs
 │  ├─ test_index.py            # Vérifie présence index
 │  └─ dataset.jsonl            # Exemple de dataset d'éval
-├─ data/                       # (créé au runtime)
-├─ artifacts/                  # (créé au runtime)
+├─ data/                       # (créé au runtime) (.parquet)
+├─ artifacts/                  # (créé au runtime) (index faiss)
 ├─ scripts/
 │  └─ run_api.sh               # Lance l'API (dev)
 ├─ .env.example
@@ -131,7 +135,7 @@ Endpoints :
 
 Docs Swagger : http://127.0.0.1:8000/docs
 
-### 6) Tests   ______________________________________________________________________________________ Le resste est à dev 🫣🤯😶‍🌫️
+### 6) Tests  
 ```bash
 poetry run pytest -q
 ```
@@ -140,7 +144,8 @@ poetry run pytest -q
 - Ajoutez vos Q/A dans `tests/dataset.jsonl`
 - Lancez :
 ```bash
-poetry run evaluate-rag
+poetry run evaluate-rag (OPENAI) - Non fonctionnel : necessite un token Open AI
+poetry run ragas_ollama_demo (version fonctionelle ollama)
 ```
 
 ---
@@ -160,10 +165,3 @@ Cela facilite la vectorisation et la recherche sémantique, tout en conservant *
 
 ---
 
-## 📊 Démo attendue
-1. Construire l’index (étapes 1–3).
-2. Lancer l’API.
-3. Tester `POST /ask` avec une question métier (ex. “Que faire à Paris ce week-end ?”).
-4. Slides (10–15) basées sur : objectifs, archi, pipeline, résultats, métriques, limites, suites.
-
-Bon POC !
